@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, memo } from "react";
 import {
   Table,
   TableBody,
@@ -22,6 +22,12 @@ interface TeamTableData {
   team: string;
   gameCount: number;
   gamesByDay: TeamDayGames;
+}
+
+// Parse date string as local date (not UTC) to avoid timezone issues
+function parseLocalDate(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
 }
 
 // Get Monday of the week for a given date
@@ -69,6 +75,103 @@ function getDefaultWeek(weeks: WeekSchedule[]): string | null {
   return weeks[weeks.length - 1].weekStart;
 }
 
+// Format date as "Jan 1"
+function formatDate(dateStr: string): string {
+  const date = parseLocalDate(dateStr);
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+// Format time as "7:00 PM"
+function formatTime(timeStr: string): string {
+  const date = new Date(timeStr);
+  return date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+// Get day of week from date string
+function getDayOfWeek(dateStr: string): string {
+  const date = parseLocalDate(dateStr);
+  return date.toLocaleDateString("en-US", { weekday: "long" });
+}
+
+// Handle image error by hiding it
+function handleImageError(e: React.SyntheticEvent<HTMLImageElement>) {
+  e.currentTarget.style.display = "none";
+}
+
+// Memoized team row component to prevent unnecessary re-renders
+const TeamRow = memo(({ teamData }: { teamData: TeamTableData }) => {
+  return (
+    <TableRow>
+      <TableCell className="font-medium sticky left-0 z-10 bg-background border-r min-w-[220px] w-[220px]">
+        <div className="flex items-center gap-2 min-w-0">
+          <img
+            src={getTeamLogoPath(teamData.team)}
+            alt={teamData.team}
+            className="w-6 h-6 object-contain shrink-0"
+            onError={handleImageError}
+          />
+          <div className="flex flex-col min-w-0 flex-1">
+            <span className="truncate">{teamData.team}</span>
+            <span className="text-xs text-muted-foreground">
+              {teamData.gameCount} {teamData.gameCount === 1 ? "game" : "games"}
+            </span>
+          </div>
+        </div>
+      </TableCell>
+      {DAYS_OF_WEEK.map((day) => {
+        const games = teamData.gamesByDay[day] || [];
+        return (
+          <TableCell key={day} className="align-top">
+            {games.length > 0 ? (
+              <div className="space-y-2">
+                {games.map((game, idx) => {
+                  const isHome = game.home_team === teamData.team;
+                  const opponent = isHome ? game.away_team : game.home_team;
+                  return (
+                    <div
+                      key={idx}
+                      className="p-2 bg-muted rounded-md text-sm"
+                    >
+                      <div className="font-medium mb-1">
+                        {isHome ? (
+                          <span>
+                            vs <strong>{opponent}</strong>
+                          </span>
+                        ) : (
+                          <span>
+                            @ <strong>{opponent}</strong>
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {formatTime(game.time_utc)}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {game.arena}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            )}
+          </TableCell>
+        );
+      })}
+    </TableRow>
+  );
+});
+
+TeamRow.displayName = "TeamRow";
+
 export function ScheduleViewer() {
   const [weeks, setWeeks] = useState<WeekSchedule[]>([]);
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
@@ -91,28 +194,6 @@ export function ScheduleViewer() {
         setLoading(false);
       });
   }, []);
-
-  const formatDate = (dateStr: string): string => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    });
-  };
-
-  const formatTime = (timeStr: string): string => {
-    const date = new Date(timeStr);
-    return date.toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
-  };
-
-  const getDayOfWeek = (dateStr: string): string => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString("en-US", { weekday: "long" });
-  };
 
   // Transform week data into table format
   const tableData = useMemo(() => {
@@ -274,68 +355,7 @@ export function ScheduleViewer() {
               </TableHeader>
               <TableBody>
                 {tableData.map((teamData) => (
-                  <TableRow key={teamData.team}>
-                    <TableCell className="font-medium sticky left-0 z-10 bg-background border-r min-w-[220px] w-[220px]">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <img
-                          src={getTeamLogoPath(teamData.team)}
-                          alt={teamData.team}
-                          className="w-6 h-6 object-contain shrink-0"
-                          onError={(e) => {
-                            // Hide image if it fails to load
-                            (e.target as HTMLImageElement).style.display = "none";
-                          }}
-                        />
-                        <div className="flex flex-col min-w-0 flex-1">
-                          <span className="truncate">{teamData.team}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {teamData.gameCount} {teamData.gameCount === 1 ? "game" : "games"}
-                          </span>
-                        </div>
-                      </div>
-                    </TableCell>
-                    {DAYS_OF_WEEK.map((day) => {
-                      const games = teamData.gamesByDay[day] || [];
-                      return (
-                        <TableCell key={day} className="align-top">
-                          {games.length > 0 ? (
-                            <div className="space-y-2">
-                              {games.map((game, idx) => {
-                                const isHome = game.home_team === teamData.team;
-                                const opponent = isHome ? game.away_team : game.home_team;
-                                return (
-                                  <div
-                                    key={idx}
-                                    className="p-2 bg-muted rounded-md text-sm"
-                                  >
-                                    <div className="font-medium mb-1">
-                                      {isHome ? (
-                                        <span>
-                                          vs <strong>{opponent}</strong>
-                                        </span>
-                                      ) : (
-                                        <span>
-                                          @ <strong>{opponent}</strong>
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="text-xs text-muted-foreground">
-                                      {formatTime(game.time_utc)}
-                                    </div>
-                                    <div className="text-xs text-muted-foreground mt-1">
-                                      {game.arena}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                      );
-                    })}
-                  </TableRow>
+                  <TeamRow key={teamData.team} teamData={teamData} />
                 ))}
               </TableBody>
             </Table>

@@ -21,6 +21,12 @@ function loadSchedule(): Game[] {
   return records as Game[];
 }
 
+// Parse date string as local date (not UTC) to avoid timezone issues
+function parseLocalDate(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
 // Get Monday of the week for a given date
 function getWeekStart(date: Date): Date {
   const d = new Date(date);
@@ -42,7 +48,7 @@ function groupGamesByWeek(games: Game[]): WeekSchedule[] {
   const weekMap = new Map<string, Game[]>();
 
   games.forEach((game) => {
-    const gameDate = new Date(game.date);
+    const gameDate = parseLocalDate(game.date);
     const weekStart = getWeekStart(gameDate);
     const weekKey = formatDate(weekStart);
 
