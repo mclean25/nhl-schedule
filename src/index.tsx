@@ -1,7 +1,8 @@
 import { serve } from "bun";
 import index from "./index.html";
-import { readFileSync } from "fs";
+import { readFileSync, existsSync } from "fs";
 import { parse } from "csv-parse/sync";
+import { join } from "path";
 import type { Game, WeekSchedule, TeamWeekSchedule } from "./types";
 
 // Read and parse CSV file
@@ -99,6 +100,24 @@ const schedule = loadSchedule();
 
 const server = serve({
   routes: {
+    // Serve static files from public directory
+    "/team-icons/*": async (req) => {
+      const url = new URL(req.url);
+      const filePath = url.pathname.replace("/team-icons/", "");
+      const publicPath = join(process.cwd(), "public", "team-icons", filePath);
+      
+      if (existsSync(publicPath)) {
+        const file = Bun.file(publicPath);
+        return new Response(file, {
+          headers: {
+            "Content-Type": file.type || "image/svg+xml",
+          },
+        });
+      }
+      
+      return new Response("Not found", { status: 404 });
+    },
+
     // Serve index.html for all unmatched routes.
     "/*": index,
 
