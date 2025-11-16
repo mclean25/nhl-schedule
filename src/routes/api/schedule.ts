@@ -1,22 +1,30 @@
-import { serve } from "bun";
-import index from "./index.html";
+import { createFileRoute } from '@tanstack/react-router'
 import { readFileSync, existsSync } from "fs";
 import { parse } from "csv-parse/sync";
 import { join } from "path";
-import type { Game, WeekSchedule, TeamWeekSchedule } from "./types";
+import type { Game, WeekSchedule, TeamWeekSchedule } from "../../types";
 
 // Read and parse CSV file
 function loadSchedule(): Game[] {
-  // Use import.meta.dir which is available in Bun, or fallback to process.cwd()
-  const csvPath = import.meta.dir 
-    ? `${import.meta.dir}/../nhl-schedule-2025-2026.csv`
-    : `${process.cwd()}/nhl-schedule-2025-2026.csv`;
+  // Path to CSV file in the root directory
+  const csvPath = join(process.cwd(), "nhl-schedule-2025-2026.csv");
+
+  if (!existsSync(csvPath)) {
+    throw new Error(`CSV file not found at ${csvPath}`);
+  }
+
   const csvContent = readFileSync(csvPath, "utf-8");
   const records = parse(csvContent, {
     columns: true,
     skip_empty_lines: true,
   });
   return records as Game[];
+}
+
+// Parse date string as local date (not UTC) to avoid timezone issues
+function parseLocalDate(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
 }
 
 // Get Monday of the week for a given date
@@ -40,7 +48,7 @@ function groupGamesByWeek(games: Game[]): WeekSchedule[] {
   const weekMap = new Map<string, Game[]>();
 
   games.forEach((game) => {
-    const gameDate = new Date(game.date);
+    const gameDate = parseLocalDate(game.date);
     const weekStart = getWeekStart(gameDate);
     const weekKey = formatDate(weekStart);
 
@@ -98,32 +106,11 @@ function groupGamesByWeek(games: Game[]): WeekSchedule[] {
 
 const schedule = loadSchedule();
 
-const server = serve({
-  routes: {
-    // Serve static files from public directory
-    "/team-icons/*": async (req) => {
-      const url = new URL(req.url);
-      const filePath = url.pathname.replace("/team-icons/", "");
-      const publicPath = join(process.cwd(), "public", "team-icons", filePath);
-      
-      if (existsSync(publicPath)) {
-        const file = Bun.file(publicPath);
-        return new Response(file, {
-          headers: {
-            "Content-Type": file.type || "image/svg+xml",
-          },
-        });
-      }
-      
-      return new Response("Not found", { status: 404 });
-    },
-
-    // Serve index.html for all unmatched routes.
-    "/*": index,
-
-    "/api/schedule": {
-      async GET(req) {
-        const url = new URL(req.url);
+export const Route = createFileRoute('/api/schedule')({
+  server: {
+    handlers: {
+      GET: async ({ request }) => {
+        const url = new URL(request.url);
         const weekParam = url.searchParams.get("week");
 
         if (weekParam) {
@@ -143,31 +130,6 @@ const server = serve({
         return Response.json(weekSchedules);
       },
     },
-
-    "/api/hello": {
-      async GET(req) {
-        return Response.json({
-          message: "Hello, world!",
-          method: "GET",
-        });
-      },
-      async PUT(req) {
-        return Response.json({
-          message: "Hello, world!",
-          method: "PUT",
-        });
-      },
-    },
-
-    "/api/hello/:name": async (req) => {
-      const name = req.params.name;
-      return Response.json({
-        message: `Hello, ${name}!`,
-      });
-    },
   },
+})
 
-  development: process.env.NODE_ENV !== "production",
-});
-
-console.log(`🚀 Server running at ${server.url}`);

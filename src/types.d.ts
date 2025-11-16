@@ -22,3 +22,4 @@ export interface TeamWeekSchedule {
   gameCount: number;
   games: Game[];
 }
+
