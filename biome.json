@@ -1,35 +1,80 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.2.4/schema.json",
-	"vcs": {
-		"enabled": false,
-		"clientKind": "git",
-		"useIgnoreFile": false
-	},
-	"files": {
-		"ignoreUnknown": false,
-		"includes": [
-			"**/src/**/*",
-			"**/.vscode/**/*",
-			"**/index.html",
-			"**/vite.config.js",
-			"!**/src/routeTree.gen.ts",
-			"!**/src/styles.css"
-		]
-	},
-	"formatter": {
-		"enabled": true,
-		"indentStyle": "tab"
-	},
-	"assist": { "actions": { "source": { "organizeImports": "on" } } },
-	"linter": {
-		"enabled": true,
-		"rules": {
-			"recommended": true
-		}
-	},
-	"javascript": {
-		"formatter": {
-			"quoteStyle": "double"
-		}
-	}
+  "vcs": {
+    "clientKind": "git",
+    "enabled": true,
+    "useIgnoreFile": true,
+    "defaultBranch": "main"
+  },
+  "files": {
+    "includes": [
+      "**",
+      "!**/.nvmrc",
+      "!.vscode/",
+      "!**/.sst",
+      "!**/_templates",
+      "!**/cache",
+      "!**/cikMappings.json",
+      "!**/migrations/meta",
+      "!**/sst-env.d.ts",
+      "!packages/**/dist",
+      "!packages/core/db/migrations",
+      "!packages/core/modelling/summary/formula/parser.ts",
+      "!packages/core/modelling/summary/formula/parser.terms.ts",
+      "!packages/domain/integration/**/__snapshot.json",
+      "!packages/domain/integration/**/data",
+      "!packages/domain/modelling/testData/**/*.json",
+      "!packages/domain/integration/**/*.json",
+      "!**/__snapshots__/**/*.json"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "formatWithErrors": false,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 88,
+    "attributePosition": "auto"
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "a11y": {
+        "useKeyWithClickEvents": "off",
+        "useValidAnchor": "off",
+        "noSvgWithoutTitle": "off",
+        "noStaticElementInteractions": "off",
+        "useSemanticElements": "off"
+      },
+      "complexity": {
+        "noForEach": "off",
+        "noStaticOnlyClass": "off",
+        "useFlatMap": "off",
+        "noImportantStyles": "off"
+      },
+      "correctness": {
+        "noUnusedImports": "warn",
+        "noUnusedVariables": "warn",
+        "noUnsafeOptionalChaining": "off",
+        "useExhaustiveDependencies": "off",
+        "noUnknownTypeSelector": "off"
+      },
+      "style": {
+        "useImportType": "off",
+        "noUselessElse": "off",
+        "noNonNullAssertion": "off",
+        "noParameterAssign": "off",
+        "useLiteralEnumMembers": "off",
+        "noDescendingSpecificity": "off"
+      },
+      "suspicious": {
+        "noExplicitAny": "off",
+        "noPrototypeBuiltins": "off",
+        "noAssignInExpressions": "off",
+        "noArrayIndexKey": "off",
+        "noUnknownAtRules": "off",
+        "noTsIgnore": "off"
+      }
+    }
+  }
 }
