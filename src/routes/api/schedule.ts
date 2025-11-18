@@ -1,19 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { readFileSync, existsSync } from "fs";
 import { parse } from "csv-parse/sync";
-import { join } from "path";
 import type { Game, WeekSchedule, TeamWeekSchedule } from "../../types";
+// @ts-ignore - Vite will handle this raw import
+import csvContent from "../../../nhl-schedule-2025-2026.csv?raw";
 
 // Read and parse CSV file
 function loadSchedule(): Game[] {
-  // Path to CSV file in the root directory
-  const csvPath = join(process.cwd(), "nhl-schedule-2025-2026.csv");
-
-  if (!existsSync(csvPath)) {
-    throw new Error(`CSV file not found at ${csvPath}`);
-  }
-
-  const csvContent = readFileSync(csvPath, "utf-8");
   const records = parse(csvContent, {
     columns: true,
     skip_empty_lines: true,
