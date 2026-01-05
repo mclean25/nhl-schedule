@@ -106,7 +106,17 @@ function handleImageError(e: React.SyntheticEvent<HTMLImageElement>) {
 }
 
 // Memoized team row component to prevent unnecessary re-renders
-const TeamRow = memo(({ teamData }: { teamData: TeamTableData }) => {
+const TeamRow = memo(({ teamData, gamesPerDay }: { teamData: TeamTableData; gamesPerDay: Record<string, number> }) => {
+  // Count how many games this team plays on off days
+  const offDayGames = DAYS_OF_WEEK.reduce((count, day) => {
+    const dayGameCount = gamesPerDay[day];
+    const isOffDay = dayGameCount >= 1 && dayGameCount < 10;
+    if (isOffDay && teamData.gamesByDay[day]?.length > 0) {
+      return count + teamData.gamesByDay[day].length;
+    }
+    return count;
+  }, 0);
+
   return (
     <TableRow>
       <TableCell className="font-medium sticky left-0 z-10 bg-background border-r min-w-[220px] w-[220px]">
@@ -121,14 +131,19 @@ const TeamRow = memo(({ teamData }: { teamData: TeamTableData }) => {
             <span className="truncate">{teamData.team}</span>
             <span className="text-xs text-muted-foreground">
               {teamData.gameCount} {teamData.gameCount === 1 ? "game" : "games"}
+              {offDayGames > 0 && (
+                <span className="text-amber-600 dark:text-amber-400"> ({offDayGames} off)</span>
+              )}
             </span>
           </div>
         </div>
       </TableCell>
       {DAYS_OF_WEEK.map((day) => {
         const games = teamData.gamesByDay[day] || [];
+        const dayGameCount = gamesPerDay[day];
+        const isOffDay = dayGameCount >= 1 && dayGameCount < 10;
         return (
-          <TableCell key={day} className="align-top">
+          <TableCell key={day} className={`align-top ${isOffDay ? "bg-amber-50 dark:bg-amber-900/20" : ""}`}>
             {games.length > 0 ? (
               <div className="space-y-2">
                 {games.map((game, idx) => {
@@ -137,7 +152,7 @@ const TeamRow = memo(({ teamData }: { teamData: TeamTableData }) => {
                   return (
                     <div
                       key={idx}
-                      className="p-2 bg-muted rounded-md text-sm"
+                      className={`p-2 rounded-md text-sm ${isOffDay ? "bg-amber-100 dark:bg-amber-800/40" : "bg-muted"}`}
                     >
                       <div className="font-medium mb-1">
                         {isHome ? (
@@ -195,6 +210,45 @@ export function ScheduleViewer() {
       });
   }, []);
 
+  // Calculate total games per day (needed for off-day detection)
+  const gamesPerDay = useMemo(() => {
+    const currentWeek = weeks.find((w) => w.weekStart === selectedWeek);
+    if (!currentWeek) {
+      const counts: Record<string, number> = {};
+      DAYS_OF_WEEK.forEach((day) => {
+        counts[day] = 0;
+      });
+      return counts;
+    }
+
+    const counts: Record<string, number> = {};
+    DAYS_OF_WEEK.forEach((day) => {
+      counts[day] = 0;
+    });
+
+    // Count unique games per day (each game appears twice - once for each team)
+    const uniqueGamesByDay = new Map<string, Set<string>>();
+
+    currentWeek.teams.forEach((teamSchedule) => {
+      teamSchedule.games.forEach((game) => {
+        const dayName = getDayOfWeek(game.date);
+        if (!uniqueGamesByDay.has(dayName)) {
+          uniqueGamesByDay.set(dayName, new Set());
+        }
+        // Use a unique identifier for each game (date + home + away)
+        const gameId = `${game.date}-${game.home_team}-${game.away_team}`;
+        uniqueGamesByDay.get(dayName)!.add(gameId);
+      });
+    });
+
+    // Count unique games per day
+    uniqueGamesByDay.forEach((gameSet, day) => {
+      counts[day] = gameSet.size;
+    });
+
+    return counts;
+  }, [weeks, selectedWeek]);
+
   // Transform week data into table format
   const tableData = useMemo(() => {
     const currentWeek = weeks.find((w) => w.weekStart === selectedWeek);
@@ -231,48 +285,31 @@ export function ScheduleViewer() {
       result = result.filter((t) => t.gamesByDay[filter].length > 0);
     }
 
-    // Sort by game count (descending)
-    return result.sort((a, b) => b.gameCount - a.gameCount);
-  }, [weeks, selectedWeek, filter]);
-
-  // Calculate total games per day
-  const gamesPerDay = useMemo(() => {
-    const currentWeek = weeks.find((w) => w.weekStart === selectedWeek);
-    if (!currentWeek) {
-      const counts: Record<string, number> = {};
-      DAYS_OF_WEEK.forEach((day) => {
-        counts[day] = 0;
-      });
-      return counts;
-    }
-
-    const counts: Record<string, number> = {};
-    DAYS_OF_WEEK.forEach((day) => {
-      counts[day] = 0;
-    });
-
-    // Count unique games per day (each game appears twice - once for each team)
-    const uniqueGamesByDay = new Map<string, Set<string>>();
-    
-    currentWeek.teams.forEach((teamSchedule) => {
-      teamSchedule.games.forEach((game) => {
-        const dayName = getDayOfWeek(game.date);
-        if (!uniqueGamesByDay.has(dayName)) {
-          uniqueGamesByDay.set(dayName, new Set());
+    // Sort by game count (descending), then by off-day games (descending)
+    return result.sort((a, b) => {
+      if (b.gameCount !== a.gameCount) {
+        return b.gameCount - a.gameCount;
+      }
+      // Secondary sort by off-day games
+      const aOffDayGames = DAYS_OF_WEEK.reduce((count, day) => {
+        const dayGameCount = gamesPerDay[day] || 0;
+        const isOffDay = dayGameCount >= 1 && dayGameCount < 10;
+        if (isOffDay && a.gamesByDay[day]?.length > 0) {
+          return count + a.gamesByDay[day].length;
         }
-        // Use a unique identifier for each game (date + home + away)
-        const gameId = `${game.date}-${game.home_team}-${game.away_team}`;
-        uniqueGamesByDay.get(dayName)!.add(gameId);
-      });
+        return count;
+      }, 0);
+      const bOffDayGames = DAYS_OF_WEEK.reduce((count, day) => {
+        const dayGameCount = gamesPerDay[day] || 0;
+        const isOffDay = dayGameCount >= 1 && dayGameCount < 10;
+        if (isOffDay && b.gamesByDay[day]?.length > 0) {
+          return count + b.gamesByDay[day].length;
+        }
+        return count;
+      }, 0);
+      return bOffDayGames - aOffDayGames;
     });
-
-    // Count unique games per day
-    uniqueGamesByDay.forEach((gameSet, day) => {
-      counts[day] = gameSet.size;
-    });
-
-    return counts;
-  }, [weeks, selectedWeek]);
+  }, [weeks, selectedWeek, filter, gamesPerDay]);
 
   if (loading) {
     return (
@@ -310,84 +347,109 @@ export function ScheduleViewer() {
   return (
     <div className="w-full h-screen flex flex-col">
       <div className="bg-background px-4 pt-8 pb-4 border-b">
-        <h1 className="text-4xl font-bold mb-4">NHL Schedule Viewer</h1>
-        <div className="flex items-center justify-center gap-4 mb-4">
-          <Button
-            onClick={handlePrevWeek}
-            disabled={!canGoPrev}
-            variant="outline"
-            size="icon"
-            className="h-10 w-10"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </Button>
-          <div className="text-lg font-semibold min-w-[200px] text-center">
-            {currentWeek
-              ? `${formatDate(currentWeek.weekStart)} - ${formatDate(currentWeek.weekEnd)}`
-              : "No week selected"}
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-4xl font-bold">NHL Schedule Viewer</h1>
+          <div className="flex items-center gap-4">
+            <Button
+              onClick={handlePrevWeek}
+              disabled={!canGoPrev}
+              variant="outline"
+              size="icon"
+              className="h-10 w-10"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+            <div className="text-lg font-semibold min-w-[200px] text-center">
+              {currentWeek
+                ? `${formatDate(currentWeek.weekStart)} - ${formatDate(currentWeek.weekEnd)}`
+                : "No week selected"}
+            </div>
+            <Button
+              onClick={handleNextWeek}
+              disabled={!canGoNext}
+              variant="outline"
+              size="icon"
+              className="h-10 w-10"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </Button>
           </div>
-          <Button
-            onClick={handleNextWeek}
-            disabled={!canGoNext}
-            variant="outline"
-            size="icon"
-            className="h-10 w-10"
-          >
-            <ChevronRight className="h-5 w-5" />
-          </Button>
         </div>
-        <div className="flex items-center justify-center gap-2 flex-wrap">
-          <Button
-            onClick={() => setFilter("most-games")}
-            variant={filter === "most-games" ? "default" : "outline"}
-            size="sm"
-          >
-            All Teams
-          </Button>
+        <div className="flex items-center justify-end gap-3">
+          <span className="text-sm text-muted-foreground">Filters:</span>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => setFilter("most-games")}
+              variant={filter === "most-games" ? "default" : "outline"}
+              size="sm"
+            >
+              Default
+            </Button>
+            <select
+              value={DAYS_OF_WEEK.includes(filter) ? filter : ""}
+              onChange={(e) => setFilter(e.target.value || "most-games")}
+              className={`h-8 px-3 text-sm rounded-md border transition-colors cursor-pointer ${
+                DAYS_OF_WEEK.includes(filter)
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background border-input hover:bg-accent hover:text-accent-foreground"
+              }`}
+            >
+              <option value="" disabled>Filter by day...</option>
+              {DAYS_OF_WEEK.map((day) => {
+                const gameCount = gamesPerDay[day];
+                const isOffDay = gameCount >= 1 && gameCount < 10;
+                return (
+                  <option key={day} value={day}>
+                    {day} ({gameCount}){isOffDay ? " - Off Day" : ""}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
         </div>
       </div>
 
       {currentWeek && (
-        <div className="flex-1 flex flex-col min-h-0">
-          <div className="bg-background px-4 border-b">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="min-w-[220px] w-[220px] font-semibold bg-background border-r">
-                    Team
-                  </TableHead>
-                  {DAYS_OF_WEEK.map((day) => (
-                    <TableHead key={day} className="font-semibold bg-background">
+        <div className="flex-1 overflow-auto px-4 pb-4 min-h-0">
+          <Table>
+            <TableHeader className="sticky top-0 z-10">
+              <TableRow>
+                <TableHead className="min-w-[220px] w-[220px] font-semibold bg-background border-r sticky left-0 z-20">
+                  Team
+                </TableHead>
+                {DAYS_OF_WEEK.map((day) => {
+                  const gameCount = gamesPerDay[day];
+                  const isOffDay = gameCount >= 1 && gameCount < 10;
+                  return (
+                    <TableHead key={day} className={`font-semibold ${isOffDay ? "bg-amber-100 dark:bg-amber-900/30" : "bg-background"}`}>
                       <button
                         onClick={() => setFilter(filter === day ? "most-games" : day)}
                         className={`flex items-center justify-center gap-2 w-full px-2 py-1 rounded transition-colors hover:bg-muted/50 ${
                           filter === day ? "bg-primary text-primary-foreground rounded-md" : ""
                         }`}
                       >
-                        <span>{day.slice(0, 3)}</span>
+                        <span className={isOffDay && filter !== day ? "text-amber-700 dark:text-amber-400" : ""}>{day.slice(0, 3)}</span>
                         <span className={`px-2 py-0.5 rounded-full text-xs font-normal ${
                           filter === day
                             ? "bg-primary-foreground/20 text-primary-foreground"
-                            : "bg-muted text-muted-foreground"
+                            : isOffDay
+                              ? "bg-amber-200 text-amber-700 dark:bg-amber-800 dark:text-amber-300"
+                              : "bg-muted text-muted-foreground"
                         }`}>
-                          {gamesPerDay[day]}
+                          {gameCount}
                         </span>
                       </button>
                     </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-            </Table>
-          </div>
-          <div className="flex-1 overflow-auto px-4 pb-4">
-            <Table>
-              <TableBody>
-                {tableData.map((teamData) => (
-                  <TeamRow key={teamData.team} teamData={teamData} />
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                  );
+                })}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {tableData.map((teamData) => (
+                <TeamRow key={teamData.team} teamData={teamData} gamesPerDay={gamesPerDay} />
+              ))}
+            </TableBody>
+          </Table>
         </div>
       )}
     </div>
