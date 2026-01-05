@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { getTeamLogoPath } from "@/lib/teamLogos";
+import { getTeamLogoPath, getTeamAbbreviation } from "@/lib/teamLogos";
 import type { WeekSchedule, Game } from "../types";
 
 const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -142,19 +142,16 @@ const TeamRow = memo(({ teamData }: { teamData: TeamTableData }) => {
                       <div className="font-medium mb-1">
                         {isHome ? (
                           <span>
-                            vs <strong>{opponent}</strong>
+                            vs <strong>{getTeamAbbreviation(opponent)}</strong>
                           </span>
                         ) : (
                           <span>
-                            @ <strong>{opponent}</strong>
+                            @ <strong>{getTeamAbbreviation(opponent)}</strong>
                           </span>
                         )}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {formatTime(game.time_utc)}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {game.arena}
                       </div>
                     </div>
                   );
@@ -172,11 +169,14 @@ const TeamRow = memo(({ teamData }: { teamData: TeamTableData }) => {
 
 TeamRow.displayName = "TeamRow";
 
+type FilterType = "most-games" | string; // string for day filters like "Monday"
+
 export function ScheduleViewer() {
   const [weeks, setWeeks] = useState<WeekSchedule[]>([]);
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<FilterType>("most-games");
 
   useEffect(() => {
     fetch("/api/schedule")
@@ -223,11 +223,17 @@ export function ScheduleViewer() {
       });
     });
 
-    // Convert to array and sort by game count (descending)
-    return Array.from(teamDataMap.values()).sort(
-      (a, b) => b.gameCount - a.gameCount
-    );
-  }, [weeks, selectedWeek]);
+    // Convert to array
+    let result = Array.from(teamDataMap.values());
+
+    // Apply day filter
+    if (DAYS_OF_WEEK.includes(filter)) {
+      result = result.filter((t) => t.gamesByDay[filter].length > 0);
+    }
+
+    // Sort by game count (descending)
+    return result.sort((a, b) => b.gameCount - a.gameCount);
+  }, [weeks, selectedWeek, filter]);
 
   // Calculate total games per day
   const gamesPerDay = useMemo(() => {
@@ -270,7 +276,7 @@ export function ScheduleViewer() {
 
   if (loading) {
     return (
-      <div className="container mx-auto p-8 text-center">
+      <div className="w-full px-4 py-8 text-center">
         <p>Loading schedule...</p>
       </div>
     );
@@ -278,7 +284,7 @@ export function ScheduleViewer() {
 
   if (error) {
     return (
-      <div className="container mx-auto p-8 text-center">
+      <div className="w-full px-4 py-8 text-center">
         <p className="text-red-500">Error: {error}</p>
       </div>
     );
@@ -302,10 +308,10 @@ export function ScheduleViewer() {
   };
 
   return (
-    <div className="container mx-auto p-8">
-      <div className="mb-6">
+    <div className="w-full h-screen flex flex-col">
+      <div className="bg-background px-4 pt-8 pb-4 border-b">
         <h1 className="text-4xl font-bold mb-4">NHL Schedule Viewer</h1>
-        <div className="flex items-center justify-center gap-4 mb-6">
+        <div className="flex items-center justify-center gap-4 mb-4">
           <Button
             onClick={handlePrevWeek}
             disabled={!canGoPrev}
@@ -330,29 +336,51 @@ export function ScheduleViewer() {
             <ChevronRight className="h-5 w-5" />
           </Button>
         </div>
+        <div className="flex items-center justify-center gap-2 flex-wrap">
+          <Button
+            onClick={() => setFilter("most-games")}
+            variant={filter === "most-games" ? "default" : "outline"}
+            size="sm"
+          >
+            All Teams
+          </Button>
+        </div>
       </div>
 
       {currentWeek && (
-        <div>
-          <div className="rounded-md border overflow-x-auto">
+        <div className="flex-1 flex flex-col min-h-0">
+          <div className="bg-background px-4 border-b">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="min-w-[220px] w-[220px] font-semibold sticky left-0 z-10 bg-background border-r">
+                  <TableHead className="min-w-[220px] w-[220px] font-semibold bg-background border-r">
                     Team
                   </TableHead>
                   {DAYS_OF_WEEK.map((day) => (
-                    <TableHead key={day} className="font-semibold">
-                      <div className="flex items-center justify-center gap-2">
+                    <TableHead key={day} className="font-semibold bg-background">
+                      <button
+                        onClick={() => setFilter(filter === day ? "most-games" : day)}
+                        className={`flex items-center justify-center gap-2 w-full px-2 py-1 rounded transition-colors hover:bg-muted/50 ${
+                          filter === day ? "bg-primary text-primary-foreground rounded-md" : ""
+                        }`}
+                      >
                         <span>{day.slice(0, 3)}</span>
-                        <span className="px-2 py-0.5 rounded-full bg-muted text-xs font-normal text-muted-foreground">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-normal ${
+                          filter === day
+                            ? "bg-primary-foreground/20 text-primary-foreground"
+                            : "bg-muted text-muted-foreground"
+                        }`}>
                           {gamesPerDay[day]}
                         </span>
-                      </div>
+                      </button>
                     </TableHead>
                   ))}
                 </TableRow>
               </TableHeader>
+            </Table>
+          </div>
+          <div className="flex-1 overflow-auto px-4 pb-4">
+            <Table>
               <TableBody>
                 {tableData.map((teamData) => (
                   <TeamRow key={teamData.team} teamData={teamData} />
