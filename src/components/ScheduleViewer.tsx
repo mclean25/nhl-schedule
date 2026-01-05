@@ -106,12 +106,10 @@ function handleImageError(e: React.SyntheticEvent<HTMLImageElement>) {
 }
 
 // Memoized team row component to prevent unnecessary re-renders
-const TeamRow = memo(({ teamData, gamesPerDay }: { teamData: TeamTableData; gamesPerDay: Record<string, number> }) => {
+const TeamRow = memo(({ teamData, isOffDay }: { teamData: TeamTableData; isOffDay: (day: string) => boolean }) => {
   // Count how many games this team plays on off days
   const offDayGames = DAYS_OF_WEEK.reduce((count, day) => {
-    const dayGameCount = gamesPerDay[day];
-    const isOffDay = dayGameCount >= 1 && dayGameCount < 10;
-    if (isOffDay && teamData.gamesByDay[day]?.length > 0) {
+    if (isOffDay(day) && teamData.gamesByDay[day]?.length > 0) {
       return count + teamData.gamesByDay[day].length;
     }
     return count;
@@ -140,10 +138,9 @@ const TeamRow = memo(({ teamData, gamesPerDay }: { teamData: TeamTableData; game
       </TableCell>
       {DAYS_OF_WEEK.map((day) => {
         const games = teamData.gamesByDay[day] || [];
-        const dayGameCount = gamesPerDay[day];
-        const isOffDay = dayGameCount >= 1 && dayGameCount < 10;
+        const dayIsOff = isOffDay(day);
         return (
-          <TableCell key={day} className={`align-top ${isOffDay ? "bg-amber-50 dark:bg-amber-900/20" : ""}`}>
+          <TableCell key={day} className={`align-top ${dayIsOff ? "bg-amber-50 dark:bg-amber-900/20" : ""}`}>
             {games.length > 0 ? (
               <div className="space-y-2">
                 {games.map((game, idx) => {
@@ -152,7 +149,7 @@ const TeamRow = memo(({ teamData, gamesPerDay }: { teamData: TeamTableData; game
                   return (
                     <div
                       key={idx}
-                      className={`p-2 rounded-md text-sm ${isOffDay ? "bg-amber-100 dark:bg-amber-800/40" : "bg-muted"}`}
+                      className={`p-2 rounded-md text-sm ${dayIsOff ? "bg-amber-100 dark:bg-amber-800/40" : "bg-muted"}`}
                     >
                       <div className="font-medium mb-1">
                         {isHome ? (
@@ -249,6 +246,24 @@ export function ScheduleViewer() {
     return counts;
   }, [weeks, selectedWeek]);
 
+  // Determine off-day threshold based on the week's game distribution
+  const offDayThreshold = useMemo(() => {
+    const gameCounts = Object.values(gamesPerDay).filter((count) => count > 0);
+    if (gameCounts.length === 0) return 0;
+
+    const maxGames = Math.max(...gameCounts);
+    // A day is an "off day" if it has less than 50% of the max games for that week
+    // and the max is at least 10 (to avoid marking days as off in very light weeks)
+    if (maxGames < 10) return 0; // No off days in light weeks
+    return Math.floor(maxGames * 0.5);
+  }, [gamesPerDay]);
+
+  // Helper function to check if a day is an off day
+  const isOffDay = (day: string) => {
+    const gameCount = gamesPerDay[day];
+    return gameCount >= 1 && gameCount < offDayThreshold;
+  };
+
   // Transform week data into table format
   const tableData = useMemo(() => {
     const currentWeek = weeks.find((w) => w.weekStart === selectedWeek);
@@ -292,24 +307,20 @@ export function ScheduleViewer() {
       }
       // Secondary sort by off-day games
       const aOffDayGames = DAYS_OF_WEEK.reduce((count, day) => {
-        const dayGameCount = gamesPerDay[day] || 0;
-        const isOffDay = dayGameCount >= 1 && dayGameCount < 10;
-        if (isOffDay && a.gamesByDay[day]?.length > 0) {
+        if (isOffDay(day) && a.gamesByDay[day]?.length > 0) {
           return count + a.gamesByDay[day].length;
         }
         return count;
       }, 0);
       const bOffDayGames = DAYS_OF_WEEK.reduce((count, day) => {
-        const dayGameCount = gamesPerDay[day] || 0;
-        const isOffDay = dayGameCount >= 1 && dayGameCount < 10;
-        if (isOffDay && b.gamesByDay[day]?.length > 0) {
+        if (isOffDay(day) && b.gamesByDay[day]?.length > 0) {
           return count + b.gamesByDay[day].length;
         }
         return count;
       }, 0);
       return bOffDayGames - aOffDayGames;
     });
-  }, [weeks, selectedWeek, filter, gamesPerDay]);
+  }, [weeks, selectedWeek, filter, gamesPerDay, isOffDay]);
 
   if (loading) {
     return (
@@ -397,10 +408,9 @@ export function ScheduleViewer() {
               <option value="" disabled>Filter by day...</option>
               {DAYS_OF_WEEK.map((day) => {
                 const gameCount = gamesPerDay[day];
-                const isOffDay = gameCount >= 1 && gameCount < 10;
                 return (
                   <option key={day} value={day}>
-                    {day} ({gameCount}){isOffDay ? " - Off Day" : ""}
+                    {day} ({gameCount}){isOffDay(day) ? " - Off Day" : ""}
                   </option>
                 );
               })}
@@ -419,20 +429,20 @@ export function ScheduleViewer() {
                 </TableHead>
                 {DAYS_OF_WEEK.map((day) => {
                   const gameCount = gamesPerDay[day];
-                  const isOffDay = gameCount >= 1 && gameCount < 10;
+                  const dayIsOff = isOffDay(day);
                   return (
-                    <TableHead key={day} className={`font-semibold ${isOffDay ? "bg-amber-100 dark:bg-amber-900/30" : "bg-background"}`}>
+                    <TableHead key={day} className={`font-semibold ${dayIsOff ? "bg-amber-100 dark:bg-amber-900/30" : "bg-background"}`}>
                       <button
                         onClick={() => setFilter(filter === day ? "most-games" : day)}
                         className={`flex items-center justify-center gap-2 w-full px-2 py-1 rounded transition-colors hover:bg-muted/50 ${
                           filter === day ? "bg-primary text-primary-foreground rounded-md" : ""
                         }`}
                       >
-                        <span className={isOffDay && filter !== day ? "text-amber-700 dark:text-amber-400" : ""}>{day.slice(0, 3)}</span>
+                        <span className={dayIsOff && filter !== day ? "text-amber-700 dark:text-amber-400" : ""}>{day.slice(0, 3)}</span>
                         <span className={`px-2 py-0.5 rounded-full text-xs font-normal ${
                           filter === day
                             ? "bg-primary-foreground/20 text-primary-foreground"
-                            : isOffDay
+                            : dayIsOff
                               ? "bg-amber-200 text-amber-700 dark:bg-amber-800 dark:text-amber-300"
                               : "bg-muted text-muted-foreground"
                         }`}>
@@ -446,7 +456,7 @@ export function ScheduleViewer() {
             </TableHeader>
             <TableBody>
               {tableData.map((teamData) => (
-                <TeamRow key={teamData.team} teamData={teamData} gamesPerDay={gamesPerDay} />
+                <TeamRow key={teamData.team} teamData={teamData} isOffDay={isOffDay} />
               ))}
             </TableBody>
           </Table>
